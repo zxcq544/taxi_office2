@@ -1,0 +1,414 @@
+<?php
+define('PRODUCT_PENDING', 0);
+
+define('PRODUCT_COMPLETED', 1);
+
+define('PRODUCT_CANCELED', 2);
+
+function product_entity_info()
+{
+    $return = array(
+        // Ключ 'product' - машинное название сущности.
+        'product' => array(
+            'label' => t('Product'), // Человеко-понятное название сущности.
+            'entity class' => 'Entity', // Класс сущности.
+            'controller class' => 'EntityAPIController', // Контроллер сущности.
+            'base table' => 'product', // Таблица, в которой хранится информация об сущностях.
+            'uri callback' => 'product_uri', // Функция, которая возваращает uri сущности.
+            'fieldable' => TRUE, // Позволяем прикреплять поля к сущности.
+            'entity keys' => array('id' => 'id'),
+            // Массив, в котором описываются типы сущности Product (не знаю как правильно выразится),
+            // если привести анологию с модулем Node, то это типы материалов.
+            'bundles' => array(
+                // Ключ 'product' - машинное название типа.
+                'product' => array(
+                    'label' => t('Product'), // Человеко-понятное название типа.
+                    'admin' => array(
+                        'path' => 'admin/config/product/products', // Путь, по которому доступна админка.
+                        'access arguments' => array('configure products settings'), // Права доступа в админку.
+                    ),
+                ),
+            ),
+            // Режимы отображения сущности.
+            'view modes' => array(
+                // Ключи 'full' и 'administrator'  - машинные названия режимов.
+                'full' => array(
+                    'label' => t('Full'), // Человеко-понятное название режима.
+                    'custom settings' => TRUE, // Режим включен по умолчанию.
+                ),
+                'administrator' => array(
+                    'label' => t('Administrator'),
+                    'custom settings' => TRUE,
+                ),
+            ),
+            'module' => 'product',
+        ),
+    );
+
+    return $return;
+}
+
+function product_menu()
+{
+    // Top level "Product" container.
+    $items['admin/config/product'] = array(
+        'title' => 'Product',
+        'description' => 'Administration tools.',
+        'page callback' => 'system_admin_menu_block_page',
+        'access arguments' => array('access administration pages'),
+        'file' => 'system.admin.inc',
+        'file path' => drupal_get_path('module', 'system'),
+    );
+    $items['admin/config/product/products'] = array(
+        'title' => 'Products',
+        'description' => 'Configure general product settings, fields, and displays.',
+        'page callback' => 'product_admin_products',
+        'access arguments' => array('administer products'),
+        'type' => MENU_NORMAL_ITEM,
+        'file' => 'product.admin.inc',
+    );
+    $items['admin/config/product/products/list'] = array(
+        'title' => 'Products',
+        'type' => MENU_DEFAULT_LOCAL_TASK,
+        'weight' => -10,
+    );
+    // Страница создания продукта.
+    $items['product/add'] = array(
+        'title' => 'Add product',
+        'page callback' => 'product_page_add',
+        'access callback' => 'product_access',
+        'access arguments' => array('create', 'product'),
+        'file' => 'product.pages.inc',
+    );
+    // Страница просмотра продукта.
+    $items['product/%product'] = array(
+        'title callback' => 'product_page_title',
+        'title arguments' => array(1),
+        'page callback' => 'product_page_view',
+        'page arguments' => array(1),
+        'access callback' => 'product_access',
+        'access arguments' => array('view', 'product', 1),
+        'file' => 'product.pages.inc',
+    );
+    $items['product/%product/view'] = array(
+        'title' => 'View',
+        'type' => MENU_DEFAULT_LOCAL_TASK,
+        'weight' => 0,
+    );
+    // Страница редактирования продукта.
+    $items['product/%product/edit'] = array(
+        'title' => 'Edit',
+        'page callback' => 'product_page_edit',
+        'page arguments' => array(1),
+        'access callback' => 'product_access',
+        'access arguments' => array('update', 'product', 1),
+        'weight' => 1,
+        'type' => MENU_LOCAL_TASK,
+        'file' => 'product.pages.inc',
+    );
+    // Страница удаления продукта.
+    $items['product/%product/delete'] = array(
+        'title' => 'Delete',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('product_delete_confirm', 1),
+        'access callback' => 'product_access',
+        'access arguments' => array('delete', 'product', 1),
+        'file' => 'product.pages.inc',
+    );
+
+    return $items;
+}
+
+
+function product_uri($product)
+{
+    return array(
+        'path' => 'product/' . $product->id,
+    );
+}
+
+function product_load($product_id)
+{
+    $products = product_load_multiple(array($product_id), array());
+    return $products ? reset($products) : FALSE;
+}
+
+function product_load_multiple($product_ids = array(), $conditions = array(), $reset = FALSE)
+{
+    return entity_load('product', $product_ids, $conditions, $reset);
+}
+
+function product_entity_load($entities, $type)
+{
+    // По умолчанию, сущность имеет только uid пользователя, который создал ее,
+    // добавляем этот код, чтобы получить еще и имя пользователя.
+    if ($type == 'product') {
+        foreach ($entities as $entity) {
+            if ($entity->uid) {
+                if ($account = user_load($entity->uid)) {
+                    $entity->name = $account->name;
+                }
+            } else {
+                $entity->name = variable_get('anonymous', t('Anonymous'));
+            }
+        }
+    }
+}
+
+function product_delete($product_id)
+{
+    product_delete_multiple(array($product_id));
+}
+
+function product_delete_multiple($product_ids)
+{
+    entity_delete_multiple('product', $product_ids);
+}
+
+
+function product_view_multiple($products, $view_mode = 'full', $langcode = NULL)
+{
+    // Подготавливаем данные для отображения.
+    field_attach_prepare_view('product', $products, $view_mode, $langcode);
+    entity_prepare_view('product', $products, $langcode);
+    $build = array();
+    $weight = 0;
+    foreach ($products as $product) {
+        $build['products'][$product->id] = product_view($product, $view_mode, $langcode);
+        $build['products'][$product->id]['#weight'] = $weight++;
+    }
+    $build['products']['#sorted'] = TRUE;
+    return $build;
+}
+
+function product_view($product, $view_mode = 'full', $langcode = NULL)
+{
+    if (!isset($langcode)) {
+        global $language;
+        $langcode = $language->language;
+    }
+
+    // Заполняем $product->content данными в виде рендерного массива.
+    product_build_content($product, $view_mode, $langcode);
+
+    $build = $product->content;
+    // Скрываем данные, чтобы избежать их дублирования при выводе $product->content.
+    unset($product->content);
+
+    $build += array(
+        '#theme' => 'product',
+        '#product' => $product,
+        '#view_mode' => $view_mode,
+        '#language' => $langcode,
+    );
+
+    return $build;
+}
+
+function product_build_content($product, $view_mode = 'full', $langcode = NULL)
+{
+    if (!isset($langcode)) {
+        global $language;
+        $langcode = $language->language;
+    }
+
+    // Удаляем существующий конент, если существует.
+    $product->content = array();
+
+    field_attach_prepare_view('product', array($product->id => $product), $view_mode, $langcode);
+    entity_prepare_view('product', array($product->id => $product), $langcode);
+    $product->content += field_attach_view('product', $product, $view_mode, $langcode);
+
+    $product->content += array('#view_mode' => $view_mode);
+
+    $product->content['links'] = array(
+        '#theme' => 'links__product',
+        '#pre_render' => array('drupal_pre_render_links'),
+        '#attributes' => array('class' => array('links')),
+    );
+}
+
+function product_theme()
+{
+    return array(
+        'product' => array(
+            'render element' => 'elements',
+            'template' => 'templates/product',
+        ),
+    );
+}
+
+function template_preprocess_product(&$variables)
+{
+    $variables['view_mode'] = $variables['elements']['#view_mode'];
+
+    $variables['product'] = $variables['elements']['#product'];
+    $product = $variables['product'];
+
+    $variables['date'] = format_date($product->created);
+    $variables['name'] = theme('username', array('account' => $product));
+
+    $uri = product_uri($product);
+
+    $variables['product_url'] = url($uri['path']);
+    $variables['title'] = check_plain($product->title);
+    $variables['page'] = $variables['view_mode'] == 'full';
+
+    $variables = array_merge((array)$product, $variables);
+
+    $variables += array('content' => array());
+    foreach (element_children($variables['elements']) as $key) {
+        $variables['content'][$key] = $variables['elements'][$key];
+    }
+
+    // Делаем поля доступными в качестве переменных для соответствующего языка.
+    field_attach_preprocess('product', $product, $variables['content'], $variables);
+
+    $variables['submitted'] = t('Submitted by !username on !datetime', array('!username' => $variables['name'], '!datetime' => $variables['date']));
+
+    $variables['title_attributes_array']['class'][] = 'product-title';
+
+    if ($variables['status'] == PRODUCT_PENDING) {
+        $variables['classes_array'][] = 'product-pending';
+    } elseif ($variables['status'] == PRODUCT_COMPLETED) {
+        $variables['classes_array'][] = 'product-completed';
+    } elseif ($variables['status'] == PRODUCT_CANCELED) {
+        $variables['classes_array'][] = 'product-canceled';
+    }
+}
+
+function product_permission()
+{
+    return array(
+        'configure products settings' => array(
+            'title' => t('Configure products settings'),
+            'description' => t('Allows users to configure products settings.'),
+            'restrict access' => TRUE,
+        ),
+        'administer products' => array(
+            'title' => t('Administer products'),
+            'restrict access' => TRUE,
+        ),
+        'edit any products' => array(
+            'title' => t('Edit any product'),
+            'restrict access' => TRUE,
+        ),
+        'edit own products' => array(
+            'title' => t('Edit own products'),
+            'restrict access' => TRUE,
+        ),
+        'delete any products' => array(
+            'title' => t('Delete any products'),
+            'restrict access' => TRUE,
+        ),
+        'delete own products' => array(
+            'title' => t('Delete own products'),
+            'restrict access' => TRUE,
+        ),
+        'create products' => array(
+            'title' => t('Create new products'),
+        ),
+        'view products' => array(
+            'title' => t('View products'),
+        ),
+    );
+}
+
+function product_access($op, $entity_type, $product = NULL, $account = NULL)
+{
+
+    $rights = &drupal_static(__FUNCTION__, array());
+
+    if (!in_array($op, array('view', 'update', 'delete', 'create'), TRUE)) {
+        // Если $op не равен ни одной из поддерживаемых операций, возвращаем "доступ запрещен".
+        return FALSE;
+    }
+
+    // Если в функцию не передан пользователь, то проверяем права для текущего пользователя.
+    if (empty($account)) {
+        global $user;
+        $account = $user;
+    }
+
+    // $product может быть объектом или не существовать, поэтому испольем его id,
+    // или $entity_type в качестве статичного идентификатора, который будет использоваться ключом кеша.
+    $cid = is_object($product) && !empty($product->id) ? $product->id : $entity_type;
+
+    // Если мы уже проверяли для данной сущности и пользователя права доступа,
+    // то возвращаем их из кеша.
+    if (isset($rights[$account->uid][$cid][$op])) {
+        return $rights[$account->uid][$cid][$op];
+    }
+
+    // Проверяем, может ли пользователь создавать новые продукты.
+    if ($op == 'create' && user_access('create products', $account)) {
+        $rights[$account->uid][$cid][$op] = TRUE;
+        return TRUE;
+    }
+
+    if ($op == 'update') {
+        // Проверяем, может ли пользователь редактирвоать любые продукты.
+        if (user_access('edit any products', $account)) {
+            $rights[$account->uid][$cid][$op] = TRUE;
+            return TRUE;
+        } // Проверяем, может ли пользователь редактирвоать свои продукты.
+        elseif (user_access('edit own products', $account) && $product->uid == $account->uid) {
+            $rights[$account->uid][$cid][$op] = TRUE;
+            return TRUE;
+        }
+    } elseif ($op == 'delete') {
+        // Проверяем, может ли пользователь удалять любые продукты.
+        if (user_access('delete any products', $account)) {
+            $rights[$account->uid][$cid][$op] = TRUE;
+            return TRUE;
+        } // Проверяем, может ли пользователь удалять свои продукты.
+        elseif (user_access('delete own products', $account) && $product->uid == $account->uid) {
+            $rights[$account->uid][$cid][$op] = TRUE;
+            return TRUE;
+        }
+    } // Проверяем, может ли пользователь просматривать продукты.
+    elseif ($op == 'view' && user_access('view products', $account)) {
+        $rights[$account->uid][$cid][$op] = TRUE;
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+function product_admin_paths()
+{
+    $paths = array(
+        'product/add' => TRUE,
+        'product/*/edit' => TRUE,
+        'product/*/delete' => TRUE,
+    );
+    return $paths;
+}
+
+function product_status_get_title($id = NULL)
+{
+    $ids = array(
+        PRODUCT_PENDING => t('Pending'),
+        PRODUCT_COMPLETED => t('Completed'),
+        PRODUCT_CANCELED => t('Canceled'),
+    );
+
+    if (isset($id)) {
+        return $ids[$id];
+    }
+
+    return $ids;
+}
+
+function product_page_title($product)
+{
+    return $product->title;
+}
+
+function product_page_view($product)
+{
+    // For markup consistency with other pages, use product_view_multiple() rather than product_view().
+    $products = product_view_multiple(array($product->id => $product), 'full');
+
+    return $products;
+}

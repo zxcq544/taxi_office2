@@ -1,0 +1,55 @@
+<?php
+function product_schema()
+{
+    $schema['product'] = array(
+        'description' => 'The base table for products.',
+        'fields' => array(
+            'id' => array(
+                'description' => 'The primary identifier for a product.',
+                'type' => 'serial',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+            ),
+            'title' => array(
+                'description' => 'The title of this product, always treated as non-markup plain text.',
+                'type' => 'varchar',
+                'length' => 255,
+                'not null' => TRUE,
+                'default' => '',
+            ),
+            'uid' => array(
+                'description' => 'The {users}.uid that owns this product.',
+                'type' => 'int',
+                'not null' => TRUE,
+                'default' => 0,
+            ),
+            'status' => array(
+                'description' => 'Boolean indicating whether the status of this product',
+                'type' => 'int',
+                'not null' => TRUE,
+                'default' => 1,
+            ),
+            'created' => array(
+                'description' => 'The Unix timestamp when the product was created.',
+                'type' => 'int',
+                'not null' => TRUE,
+                'default' => 0,
+            ),
+            'changed' => array(
+                'description' => 'The Unix timestamp when the product was most recently saved.',
+                'type' => 'int',
+                'not null' => TRUE,
+                'default' => 0,
+            ),
+        ),
+        'primary key' => array('id'),
+        'indexes' => array(
+            'uid' => array('uid'),
+            'product_changed' => array('changed'),
+            'product_created' => array('created'),
+            'product_status' => array('status'),
+        ),
+    );
+
+    return $schema;
+}
