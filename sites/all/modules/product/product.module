@@ -90,6 +90,18 @@ function product_menu()
         'access arguments' => array('view', 'product', 1),
         'file' => 'product.pages.inc',
     );
+    $items['products'] = array(
+//        'title callback' => 'product_page_title',
+//        'title arguments' => array(1),
+        'title' => 'Все продукты',
+        'page callback' => 'product_view_all',
+//        'page arguments' => array(1),
+        'access callback' => 'product_access',
+        'access arguments' => array('view', 'product', 1),
+        'file' => 'product.pages.inc',
+        'type' => MENU_NORMAL_ITEM,
+        'menu_name' => 'main-menu'
+    );
     $items['product/%product/view'] = array(
         'title' => 'View',
         'type' => MENU_DEFAULT_LOCAL_TASK,
@@ -179,6 +191,18 @@ function product_view_multiple($products, $view_mode = 'full', $langcode = NULL)
     }
     $build['products']['#sorted'] = TRUE;
     return $build;
+}
+
+function product_view_all()
+{
+    $products = entity_load('product');
+//    print_r($products);
+    $result = [];
+    foreach ($products as $product) {
+        $result['products'][$product->id] = product_view($product);
+
+    }
+    return $result;
 }
 
 function product_view($product, $view_mode = 'full', $langcode = NULL)
@@ -398,17 +422,4 @@ function product_status_get_title($id = NULL)
     }
 
     return $ids;
-}
-
-function product_page_title($product)
-{
-    return $product->title;
-}
-
-function product_page_view($product)
-{
-    // For markup consistency with other pages, use product_view_multiple() rather than product_view().
-    $products = product_view_multiple(array($product->id => $product), 'full');
-
-    return $products;
 }

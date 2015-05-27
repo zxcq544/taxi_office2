@@ -1,10 +1,14 @@
 <div id="product-<?php print $product->id; ?>" class="<?php print $classes; ?> clearfix"<?php print $attributes; ?>>
 
-    <?php print render($title_prefix); ?>
-    <?php if (!$page): ?>
-        <h2<?php print $title_attributes; ?>><?php print $title; ?></h2>
-    <?php endif; ?>
-    <?php print render($title_suffix); ?>
+
+    <?php $current_page_is_products = preg_match("/products/", $_SERVER["REQUEST_URI"]);
+    $a=2;
+    ?>
+    <?php if ($current_page_is_products){ ?>
+        <a href="/product/<?= $product->id ?>"><?= $product->title ?></a>
+    <?php }else{ ?>
+        <?= $product->title ?>
+    <?php } ?>
 
     <div class="submitted">
         <?php print $submitted; ?>
